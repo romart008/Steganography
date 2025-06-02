@@ -7,8 +7,11 @@
 # 5. Change it to the one given
 #
 # ! Insert some cryptography
+# ! OPTIMIZE
+# ! 5 GODDAMN MINUTES TO ONE MATRIX
 
 from PIL import Image
+import numpy as np
 
 def open_image(image_path):
     
@@ -49,11 +52,20 @@ def Mat(p, l, n, t):
     Mat(p, l, n+1, t)
     t.pop()
 
-def transform(bits, Matrix, mag_b)
+def transform(bits, Matrix, msg_b):
+    color = 0
+
+    nat_msg = np.dot(Matrix.T, [int(sub_array[color])for sub_array in bits[:len(Matrix)]])%2
+
+    print(nat_msg)
 
 Cover, bits = open_image("testimage.png")
 
-msg_b, p, l = Message("Hello")
+msg_b, p, l = Message("Heh")
 
 Mat(p, l, 0, [])
 del Matrix[0]
+
+Matrix = np.array(Matrix)
+
+transform(bits, Matrix, msg_b)
