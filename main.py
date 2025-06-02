@@ -17,6 +17,7 @@ def open_image(image_path):
     
     img = Image.open(image_path).convert("RGB")     # Opening image as rgb
     pixels = list(img.getdata())                    # Getting all info about pixels as list
+    width, height = img.size
 
     Cover = []
     bits = []
@@ -26,11 +27,11 @@ def open_image(image_path):
         Cover.append(temp)   
         bits.append([temp[0][-1], temp[1][-1], temp[2][-1]])                # Get last bites
         
-    return Cover, bits
+    return Cover, bits, width, height
 
 
 def Message(msg):
-    msg_b = ''.join(format(x, 'b') for x in bytearray(msg, 'utf-8'))        # Переведення повідомлення двійковий код
+    msg_b = ''.join(format(x, 'b') for x in bytearray(msg, 'utf-8'))        # Converting msg to binary
     p = len(msg_b)
 
     return msg_b, p, 2**p-1
@@ -41,31 +42,62 @@ def Mat(p, l, n, t):
     global Matrix
 
     if n == p:
-        Matrix.append(t.copy())             # Якщо стовпець з p символів готовий - додаємо його в масив
+        Matrix.append(t.copy())             # If collumn of p elements ready - Add to Matrix
         return
 
     t.append(0)
-    Mat(p, l, n+1, t)                       # Запускаємо цю ж функцію яка кожен раз додає 0 або 1 поки не буде повний стовпець
+    Mat(p, l, n+1, t)                       # Recursion
     t.pop()
 
     t.append(1)
     Mat(p, l, n+1, t)
     t.pop()
 
-def transform(bits, Matrix, msg_b):
-    color = 0
+def transform(bits, Matrix, msg_b, width, height):
+    # --- Seeking what pixel to change ---
 
-    nat_msg = np.dot(Matrix.T, [int(sub_array[color])for sub_array in bits[:len(Matrix)]])%2
+    global Cover
 
-    print(nat_msg)
+    color = 0                           # What color to use
 
-Cover, bits = open_image("testimage.png")
+    stego = (np.dot(Matrix.T, [int(sub_array[color])for sub_array in bits[:len(Matrix)]]) - int(msg_b))%2    # Stego vector
 
-msg_b, p, l = Message("Heh")
+    #stego = "".join(map(str, stego))
+    #print(int(stego, 2).to_bytes(len(stego) // 7, 'big').decode())    - showing what charactert is this    
+    
+    # --- Changing that pixel ---
+    pos = 0
+    for i in Matrix.T:
+        if np.array_equal(i, stego):
+            Cover[pos][color] = (Cover[pos][color]+1)%2
+            break
+        pos +=1
+
+    # --- Reconstructing the image ---
+    new_image = []
+    for r_bin, g_bin, b_bin in Cover:
+        r = int(r_bin, 2)
+        g = int(g_bin, 2)
+        b = int(b_bin, 2)
+        new_image.append((r, g, b))
+
+    new_img = Image.new("RGB", (width, height))
+    new_img.putdata(new_image)
+    new_img.save("output.png")
+
+
+Cover, bits, width, height = open_image("testimage.png")
+
+msg_b, p, l = Message("Hi")
 
 Mat(p, l, 0, [])
 del Matrix[0]
 
 Matrix = np.array(Matrix)
 
-transform(bits, Matrix, msg_b)
+if len(Cover) > l:
+    transform(bits, Matrix, msg_b, width, height)
+else:
+    print("Message too big for file")
+
+
