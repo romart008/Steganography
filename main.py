@@ -27,8 +27,8 @@ def open_image(image_path):
 
 
 def Message(msg):
-    p = len(msg)
     msg_b = ''.join(format(x, 'b') for x in bytearray(msg, 'utf-8'))        # Переведення повідомлення двійковий код
+    p = len(msg_b)
 
     return msg_b, p, 2**p-1
 
@@ -49,10 +49,11 @@ def Mat(p, l, n, t):
     Mat(p, l, n+1, t)
     t.pop()
 
+def transform(bits, Matrix, mag_b)
+
 Cover, bits = open_image("testimage.png")
 
 msg_b, p, l = Message("Hello")
 
 Mat(p, l, 0, [])
 del Matrix[0]
-
