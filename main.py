@@ -1,8 +1,8 @@
 #       Steganography project
 #
 # +. Open photo and get all LSBs
-# 2. Get a message and encode it
-# 3. Create a matrix for encoding
+# +. Get a message and encode it
+# +. Create a matrix for encoding
 # 4. Calculate the natural hidden msg
 # 5. Change it to the one given
 #
@@ -28,14 +28,31 @@ def open_image(image_path):
 
 def Message(msg):
     p = len(msg)
-    msg_b = ''.join(format(x, 'b') for x in bytearray(msg, 'utf-8'))
+    msg_b = ''.join(format(x, 'b') for x in bytearray(msg, 'utf-8'))        # Переведення повідомлення двійковий код
 
-    return msg_b, p
+    return msg_b, p, 2**p-1
 
+Matrix = []
 
+def Mat(p, l, n, t):
+    global Matrix
+
+    if n == p:
+        Matrix.append(t.copy())             # Якщо стовпець з p символів готовий - додаємо його в масив
+        return
+
+    t.append(0)
+    Mat(p, l, n+1, t)                       # Запускаємо цю ж функцію яка кожен раз додає 0 або 1 поки не буде повний стовпець
+    t.pop()
+
+    t.append(1)
+    Mat(p, l, n+1, t)
+    t.pop()
 
 Cover, bits = open_image("testimage.png")
 
-msg_b, p = Message("Hello")
+msg_b, p, l = Message("Hello")
 
-print(msg_b)
+Mat(p, l, 0, [])
+del Matrix[0]
+
