@@ -153,6 +153,7 @@ if __name__ == "__main__":
         compile(Cover, width, height)
         print("Image Created. Done")
     if n == 1:
+        print("Your message is:")
         print(extract("output.png",p,depth,stop))
 
         
