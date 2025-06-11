@@ -107,13 +107,15 @@ def extract(image_path, p, d, stop):
     Mat = Mat.T    
     
     msg = []
-
+    #len(Cover)//l
     for i in range(len(Cover)//l):
         stop_bits = [int(b) for b in ''.join(format(ord(i), '08b') for i in stop)]
         
         
-        if len(msg) >= len(stop_bits) and len(msg)%8 == 0:
-            if list(msg[-len(stop_bits):]) == list(stop_bits):
+        if len(msg) >= len(stop_bits):
+            if list(msg[-len(stop_bits)-len(msg)%8:-0-len(msg)%8]) == list(stop_bits) and len(msg)%8 != 0:
+                break
+            elif list(msg[-len(stop_bits):]) == list(stop_bits) and len(msg)%8 == 0:
                 break
 
         if d > 1:
@@ -141,11 +143,11 @@ def extract(image_path, p, d, stop):
 
 # --- Entry Point ---
 if __name__ == "__main__":
-    n = 1
+    n = 0
     depth = 1               # The ammount of last bites taken to change, recommended - 1, aka LSB
-    p = 4                   # Ammount of bits we hide per some space
+    p = 3                   # Ammount of bits we hide per some space
     stop = "&#@"
-    msg = "Have a very good and cheerful day. Wish you luck!"
+    msg = "The cat (Felis catus), also referred to as the domestic cat or house cat, is a small domesticated carnivorous mammal. It is the only domesticated species of the family Felidae"
     if n == 0:
         Cover, width, height = open_image("testimage.png")
         print("Image opened")
