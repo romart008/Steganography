@@ -33,3 +33,10 @@ compile(Cover, w, h)
 # Decoding
 text = extract("output.png", p=4, depth=1, stop="&#@")
 print(text)
+```
+
+## Notes
+- The message is padded to fit blocks of size p, using zeros if necessary.
+- Use a unique stop string (like `&#@`) to automatically terminate extraction.
+- Higher depth allows hiding more data per block but increases distortion risk.
+- Do not use with JPEG for now (lossy compression will corrupt hidden data).

@@ -51,11 +51,12 @@ def build_matrix(p):
 
 def change(Mat, cov_elem, msg, i, d):
     global Cover
+    global depth
     l = 2**p-1
 
-    syndrome = Mat.dot(cov_elem) % 2  # Current syndrome
-    message = np.array([int(b) for b in msg[i]])
-    vector = (syndrome - message) % 2  # Difference to correct
+    natural = Mat.dot(cov_elem) % 2
+    message = np.array([int(b) for b in msg[i*depth + d-1]])
+    vector = (natural - message) % 2
     pos = 0
     for j in Mat.T:
         if np.array_equal(vector, j):
@@ -69,21 +70,19 @@ def hide(msg, cov, p, depth):
     l = 2**p-1                                      # lengh of Matrix and all possible variations                       
     Mat = Mat.T                                     # Aligning matrix for correct multiplication
     for i in range(int(len(msg))):                                      
-        block = np.array([s[-depth:] for s in cov[i*l:i*l+l]])                  # Creating Cover 
-        block.shape = (l)
-
         # !!! This method allows to hide [depth] times more information in one block, than just LSB, 
         # !!! but the risk of discovering message rises exponentionaly
         if depth >1:                                                    # In case we use more than last bit
             for d in range(depth):
-                msg_idx = i * depth + d                                 # Iteration, aka how many times we alredy perfomed hiding 
-                if msg_idx >= len(msg):
-                    break
-
-                cov_elem = np.array([s[-(d + 1)] for s in block])
-                change(Mat, cov_elem, msg, msg_idx, d + 1)              
-
+                block = np.array([s[-d-1] for s in cov[i*l:i*l+l]])                  # Creating Cover
+                block = block.T
+                d_i = i*depth + d
+                if d_i > len(msg) -1:
+                    return
+                change(Mat, block, msg, i, d +1)
         else:
+            block = np.array([s[-depth:] for s in cov[i*l:i*l+l]])                  # Creating Cover
+            block.shape = (l)
             change(Mat, block, msg, i, depth)
             
 
@@ -108,19 +107,26 @@ def extract(image_path, p, d, stop):
     Mat = Mat.T    
     
     msg = []
+
     for i in range(len(Cover)//l):
-        block = np.array([s[-d:] for s in Cover[i*l:i*l+l]])
         stop_bits = [int(b) for b in ''.join(format(ord(i), '08b') for i in stop)]
-        block.shape = (l,1)
+        
         
         if len(msg) >= len(stop_bits) and len(msg)%8 == 0:
             if list(msg[-len(stop_bits):]) == list(stop_bits):
                 break
 
         if d > 1:
-            continue
+            for d_i in range(d):
+                block = np.array([s[-d_i-1] for s in Cover[i*l:i*l+l]])
+                block = block.T
+                temp = (Mat.dot(block))%2
+                temp = [int(x.item()) for x in temp]
+                msg.extend(temp)
 
         else:
+            block = np.array([s[-d] for s in Cover[i*l:i*l+l]])
+            block = block.T
             temp = (np.dot(Mat, block))%2
             temp = [int(x.item()) for x in temp]
             msg.extend(temp)
@@ -139,7 +145,7 @@ if __name__ == "__main__":
     depth = 1               # The ammount of last bites taken to change, recommended - 1, aka LSB
     p = 4                   # Ammount of bits we hide per some space
     stop = "&#@"
-    msg = "Water boils at 100 degrees"
+    msg = "Have a very good and cheerful day. Wish you luck!"
     if n == 0:
         Cover, width, height = open_image("testimage.png")
         print("Image opened")
