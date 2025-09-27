@@ -139,7 +139,6 @@ def extract(image_path, p, d, stop):
 
         
 
-    
 
 # --- Entry Point ---
 if __name__ == "__main__":
