@@ -1,7 +1,6 @@
 # Steganography project
 #
 # 1. Use root of number to encode a message in specific way
-# 2. Add GUI
 #
 # ! OPTIMIZE
 
