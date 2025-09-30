@@ -16,6 +16,8 @@ import librosa
 import matplotlib.pyplot as plt
 import numpy as np
 
+import body
+
 
 photo_references = {}
 
@@ -49,6 +51,8 @@ def select_file():
     thread = threading.Thread(target=generate_preview_thread, args=(filepath, file_extension))
     thread.daemon = True
     thread.start()
+
+#region Preview func
 
 def generate_preview_thread(filepath, extension):
     """
@@ -85,6 +89,8 @@ def update_preview_label(photo, text=None):
         preview_label.config(image=None, text=text or "Preview")
         photo_references.pop('preview', None)
 
+#region Photo
+
 def create_image_preview(filepath):
     """Opens an image, resizes it, and returns a PhotoImage object."""
     try:
@@ -94,6 +100,8 @@ def create_image_preview(filepath):
     except Exception as e:
         print(f"Image preview error: {e}")
         return None
+    
+#region Video
 
 def create_video_preview(filepath):
     """Extracts 10 random frames from a video and saves them as a temporary GIF."""
@@ -154,30 +162,27 @@ def play_gif(filepath):
         print(f"GIF play error: {e}")
         update_preview_label(None, "Could not play GIF")
 
+#region Audio
+
 def create_audio_preview(filepath):
     """Creates a spectrogram from an audio file and returns a PhotoImage."""
     try:
         # Load audio file
         y, sr = librosa.load(filepath, duration=30) 
-        print('1')
         # Create a spectrogram
         D = librosa.stft(y)
         S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
-        print('2')
         # Plot using matplotlib
         fig, ax = plt.subplots(figsize=(3, 2), dpi=100)
         librosa.display.specshow(S_db, sr=sr, x_axis='time', y_axis='log', ax=ax)
-        print('3')
         # Remove all padding, labels, and axes for a clean image
         ax.set_axis_off()
         fig.tight_layout(pad=0)
-        print('4')
         # Save the plot to an in-memory buffer
         buf = io.BytesIO()
         fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, transparent=True)
         plt.close(fig)
         buf.seek(0)
-        print('5')
         # Create a PhotoImage from the buffer
         img = Image.open(buf)
         return ImageTk.PhotoImage(img)
@@ -196,7 +201,32 @@ def set_mode(mode):
         hide_btn.config(style="TButton")
         print("Mode set to: Extract")
 
-#endregion
+#region Main func
+
+def process_enter(filepath, extension):
+    """
+    Checks the file extension and calls the appropriate transform function.
+    This function should run in a separate thread.
+    """
+    if extension in ['.png', '.jpg', '.jpeg']:
+        photo = create_image_preview(filepath)
+        root.after(0, update_preview_label, photo)
+    
+    elif extension in ['.mp4', '.avi', '.mov']:
+        # For video, we generate a GIF. This returns the GIF's filepath.
+        gif_path = create_video_preview(filepath)
+        # Schedule the GIF player to run on the main thread
+        if gif_path:
+            root.after(0, play_gif, gif_path)
+            
+    elif extension in ['.mp3', '.wav']:
+        photo = create_audio_preview(filepath)
+        root.after(0, update_preview_label, photo)
+
+    else:
+        # If file is not supported, show a message
+        root.after(0, update_preview_label, None, "Unsupported format")
+        start_btn.config(state="disabled")
 
 # --- Main Window ---
 
@@ -312,10 +342,51 @@ extract_btn.pack(side="bottom", pady=5, padx=10, fill="x")
 
 #region Right Frame
 
+# --- Top frame for parameters ---
+# We will use the .grid() manager here for easy alignment
+params_frame = ttk.Frame(right_panel, style="TFrame")
+params_frame.pack(side="top", fill="x", padx=10, pady=10)
+
+# Configure grid columns to have some padding
+params_frame.columnconfigure(0, pad=5)
+params_frame.columnconfigure(1, pad=5)
+params_frame.columnconfigure(2, pad=5)
+params_frame.columnconfigure(3, pad=5)
+
+# --- 1. Block Size (p) ---
+block_size_label = ttk.Label(params_frame, text="Block Size (p):")
+block_size_label.grid(row=0, column=0, sticky="w")
+
+block_size_entry = ttk.Entry(params_frame, width=15)
+block_size_entry.grid(row=1, column=0)
+block_size_entry.insert(0, "3") # Default value
+
+# --- 2. Depth ---
+depth_label = ttk.Label(params_frame, text="Depth:")
+depth_label.grid(row=0, column=1, sticky="w")
+
+depth_entry = ttk.Entry(params_frame, width=15)
+depth_entry.grid(row=1, column=1)
+depth_entry.insert(0, "1") # Default value
+
+# --- 3. Password / Key ---
+password_label = ttk.Label(params_frame, text="Password:")
+password_label.grid(row=0, column=2, sticky="w")
+
+password_entry = ttk.Entry(params_frame, width=15, show="*")
+password_entry.grid(row=1, column=2)
+# We can leave this empty or add a placeholder
+
+# --- 4. Stop Sequence ---
+stop_label = ttk.Label(params_frame, text="Stop Sequence:")
+stop_label.grid(row=0, column=3, sticky="w")
+
+stop_entry = ttk.Entry(params_frame, width=15)
+stop_entry.grid(row=1, column=3)
+stop_entry.insert(0, "&#@") # Default value
+
 start_btn = ttk.Button(right_panel, text="Start", state="disabled")
 start_btn.pack(side="bottom", anchor="se", padx=20, pady=20)
-
-#endregion
 
 # App start
 set_mode('hide')
