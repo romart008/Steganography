@@ -1,8 +1,6 @@
 #       
 #   1. Test Color on different monitors to check if it`s not too bright
 #
-#
-
 
 import tkinter as tk
 from tkinter import ttk, filedialog
@@ -15,8 +13,6 @@ import cv2
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
-
-import body
 
 
 photo_references = {}
