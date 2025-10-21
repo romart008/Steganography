@@ -34,7 +34,6 @@ class SteganographyMedia(ABC):
 #region Image
 
 class ImageMedia(SteganographyMedia):
-
     def _load(self):
         try:
             with Image.open(self.filepath) as img:
@@ -59,24 +58,36 @@ class ImageMedia(SteganographyMedia):
             print(f"Failed to save image: {e}")
 
     #region Hide
-    def hide(self, message: str, password_prime: int, stop_sequence: str, message_encryption: str, hide_method: str, p: int, depth:int, output:str):
+    def hide(self, message: str, password_prime: int, stop_sequence: str, message_encryption: str, hide_method: str, p: int, depth:int, output:str, log_queue=None):
         print("--- Starting Hiding Process ---")
         
+        def log(msg):
+            """Loggin function"""
+            if log_queue:
+                log_queue.put(('log', msg))
+
         #   Dissasemble message
         message_bits = list(self._message_to_bitstream(message))
         stop_bits = list(self._message_to_bitstream(stop_sequence))
+        log('Message disassembled in bits')
+        log_queue.put(('progress', 20))
         
         
         #   Cypher message
         encrypted_bits = np.concatenate((self._message_encryption(message_bits, message_encryption, password_prime),self._message_encryption(stop_bits, message_encryption, password_prime)))
+        log('Message encrypted')
+        log_queue.put(('progress', 60))
+
 
         #   Hide message
         success = self._message_hide(encrypted_bits, hide_method, p, depth, output)
         
         if success:
-            print("--- Hiding Process Finished Successfully ---")
+            log("Hiden message in container successfuly")
+            log_queue.put(('progress', 100))
         else:
-            print("--- Hiding Process Failed ---")
+            log("Hiding process failed")
+            log_queue.put(('progress', 0))
 
     #region Message
     def _message_to_bitstream(self, text: str):
@@ -113,7 +124,7 @@ class ImageMedia(SteganographyMedia):
         encrypted = []
         for msg_bit, key_bit in zip(message_bits, key_bitstream):
             encrypted.append(msg_bit ^ key_bit)
-        return np.array(encrypted)
+        return np.array(encrypted, dtype=np.uint8)
 
     def _message_encryption(self, message_bits: list, message_encryption: str, password_prime: int):
         if message_encryption == 'Binary XOR':
@@ -198,11 +209,23 @@ class ImageMedia(SteganographyMedia):
         return np.concatenate((con_chunks.flatten(), container[chunks * n:]))
     
     #region Extract
-    def extract(self, password_prime: int, stop_sequence: str, message_encryption: str, hide_method: str, p: int, depth:int):
+    def extract(self, password_prime: int, stop_sequence: str, message_encryption: str, hide_method: str, p: int, depth:int, log_queue = None):
+        
+        def log(msg):
+            """Loggin function"""
+            if log_queue:
+                log_queue.put(('log', msg))
+        
         stop_sequence = list(self._message_to_bitstream(stop_sequence))
+        log('Converted stop sequence into bits.')
+        log_queue.put(('progress', 30))
         
         message = self._message_exraction(stop_sequence, hide_method, depth, p, message_encryption, password_prime)
+        log('Found message bits')
+        log_queue.put(('progress', 70))
 
+        log('Decrypted message')
+        log_queue.put(('progress', 100))
         return self._message_decryption(message, message_encryption, password_prime)
 
     def _message_exraction(self, stop_sequence: str, hide_method: str, depth: int, p: int, message_encryption: str, password_prime: str):

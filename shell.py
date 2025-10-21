@@ -3,7 +3,7 @@
 #
 
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, scrolledtext, messagebox
 import os
 import random
 import threading
@@ -13,15 +13,23 @@ import cv2
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
+import queue
+import core
 
 
 photo_references = {}
+
+log_queue = queue.Queue()
+
+input_filepath = ''
+output_directory = ''
 
 #region Functions
 
 # --- Function ---
 def select_file():
     """Opens file choose dialoge"""
+    global input_filepath
     filepath = filedialog.askopenfilename(
         title="Select a file",
         filetypes=(
@@ -32,6 +40,8 @@ def select_file():
 
     if not filepath:
         return
+    
+    input_filepath = filepath
 
     # Update file name label
     filename = os.path.basename(filepath)
@@ -187,15 +197,25 @@ def create_audio_preview(filepath):
         return None
 
 def set_mode(mode):
-    """Change the look of mode buttons"""
+    """Change the look of UI depending on mode"""
+    global current_mode
     if mode == 'hide':
         hide_btn.config(style="Active.TButton")
         extract_btn.config(style="TButton")
+        message_area.config(state="normal")
+        output_frame.grid()
+        folder_btn.grid()
         print("Mode set to: Hide")
+        current_mode = 'hide'
     elif mode == 'extract':
         extract_btn.config(style="Active.TButton")
         hide_btn.config(style="TButton")
+        message_area.delete('1.0', tk.END)
+        message_area.config(state="disabled")
+        output_frame.grid_remove()
+        folder_btn.grid_remove()
         print("Mode set to: Extract")
+        current_mode = 'extract'
 
 #region Main func
 
@@ -223,6 +243,121 @@ def process_enter(filepath, extension):
         # If file is not supported, show a message
         root.after(0, update_preview_label, None, "Unsupported format")
         start_btn.config(state="disabled")
+
+#region Start proccessing
+def start_processing():
+    """
+    Main function that starts work.
+    """
+    global input_filepath
+    global output_directory
+
+    if input_filepath == '':
+        messagebox.showerror("Error", "Please choose a file.")
+        return
+    try:
+        p_val = int(block_size_entry.get())
+        depth_val = int(depth_entry.get())
+        password_val = int(password_entry.get())
+    except ValueError:
+        messagebox.showerror("Error", "Parameters are invalid.")
+        return
+
+    message_val = message_area.get("1.0", tk.END).strip()
+    stop_seq_val = stop_entry.get()
+    encryption_val = encryption_combo.get()
+    hide_method_val = hide_method_combo.get()
+
+    if output_directory == '':
+        output_directory = os.path.dirname(input_filepath)
+    
+    output_filename = "output_" + os.path.basename(input_filepath)
+    output_filepath = os.path.join(output_directory, output_filename)
+
+    logs_area.config(state="normal")
+    logs_area.delete('1.0', tk.END)
+    logs_area.config(state="disabled")
+    progress_bar['value'] = 0
+    
+    thread = threading.Thread(
+        target=processing_thread, 
+        args=(
+            current_mode, input_filepath, message_val, password_val, stop_seq_val,
+            encryption_val, hide_method_val, p_val, depth_val, output_filepath, log_queue
+        )
+    )
+    thread.daemon = True
+    thread.start()
+
+def prog(value):
+    progress_bar['value'] = value
+
+def log(msg):
+    """Log function"""
+    logs_area.config(state="normal")
+    logs_area.insert(tk.END, msg + "\n")
+    logs_area.see(tk.END)
+    logs_area.config(state="disabled")
+
+def processing_thread(
+    mode, filepath, message, password, stop_seq, 
+    encryption, hide_method, p, depth, output_path, log_queue
+):
+    """
+    A function that opens main file in another thread.
+    """
+
+    try:
+        log("Opening file.")
+        stego_media = core.ImageMedia(filepath)
+        prog(10)
+
+        if mode == 'hide':
+            log("Starting message hiding")
+            stego_media.hide(message, password, stop_seq, encryption, hide_method, p, depth, output_path, log_queue)
+            messagebox.showinfo("Success", f"Message successfuly hiden in:\n{output_path}")
+
+        elif mode == 'extract':
+            log("Starting message extracting")
+            extracted_message = stego_media.extract(password, stop_seq, encryption, hide_method, p, depth, log_queue)
+            
+            if extracted_message:
+                message_area.config(state="normal")
+                message_area.delete('1.0', tk.END)
+                message_area.insert('1.0', extracted_message)
+                message_area.config(state="disabled")
+            else:
+                log("Could not extract a message")
+                messagebox.showerror("Error", "Could not extract message. Check parameters")
+
+    except Exception as e:
+        log(f"Critical error: {e}")
+        messagebox.showerror("Critical error", str(e))
+    
+    prog(0)
+
+def choose_output_folder():
+    global output_directory
+    path = filedialog.askdirectory(title="Choose folder for saving")
+    if path:
+        output_directory = path
+
+def process_queue():
+    """
+    Check the queue for Logs
+    """
+    try:
+        message_type, value = log_queue.get_nowait()
+        
+        if message_type == 'log':
+            log(value)
+        elif message_type == 'progress':
+            prog(value)
+            
+    except queue.Empty:
+        pass
+
+    root.after(100, process_queue)
 
 # --- Main Window ---
 
@@ -338,52 +473,115 @@ extract_btn.pack(side="bottom", pady=5, padx=10, fill="x")
 
 #region Right Frame
 
-# --- Top frame for parameters ---
-# We will use the .grid() manager here for easy alignment
-params_frame = ttk.Frame(right_panel, style="TFrame")
-params_frame.pack(side="top", fill="x", padx=10, pady=10)
+right_panel.columnconfigure(0, weight=1)
+right_panel.columnconfigure(1, weight=100)
+right_panel.columnconfigure(2, weight=1)
+right_panel.rowconfigure(1, weight=1)
 
-# Configure grid columns to have some padding
-params_frame.columnconfigure(0, pad=5)
-params_frame.columnconfigure(1, pad=5)
-params_frame.columnconfigure(2, pad=5)
-params_frame.columnconfigure(3, pad=5)
+#region Controls
+# --- Column 1: Controls ---
+controls_frame = ttk.Frame(right_panel, style="TFrame")
+controls_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5, rowspan=2)
 
-# --- 1. Block Size (p) ---
-block_size_label = ttk.Label(params_frame, text="Block Size (p):")
-block_size_label.grid(row=0, column=0, sticky="w")
+# 1.1. Hiding methods
+hide_method_label = ttk.Label(controls_frame, text="Hide method:")
+hide_method_label.pack(pady=(10, 2), padx=10, anchor="w")
+hide_method_combo = ttk.Combobox(controls_frame, values=["LSB"], state="readonly")
+hide_method_combo.set("LSB")
+hide_method_combo.pack(pady=2, padx=10, fill="x")
 
-block_size_entry = ttk.Entry(params_frame, width=15)
-block_size_entry.grid(row=1, column=0)
-block_size_entry.insert(0, "3") # Default value
+# 1.2. Data fields
+# --- Block Size (p) ---
+block_size_label = ttk.Label(controls_frame, text="Block size (p):")
+block_size_label.pack(pady=(10, 2), padx=10, anchor="w")
+block_size_entry = ttk.Entry(controls_frame)
+block_size_entry.insert(0, "3")
+block_size_entry.pack(pady=2, padx=10, fill="x")
 
-# --- 2. Depth ---
-depth_label = ttk.Label(params_frame, text="Depth:")
-depth_label.grid(row=0, column=1, sticky="w")
+# --- Depth ---
+depth_label = ttk.Label(controls_frame, text="Depth:")
+depth_label.pack(pady=(10, 2), padx=10, anchor="w")
+depth_entry = ttk.Entry(controls_frame)
+depth_entry.insert(0, "1")
+depth_entry.pack(pady=2, padx=10, fill="x")
 
-depth_entry = ttk.Entry(params_frame, width=15)
-depth_entry.grid(row=1, column=1)
-depth_entry.insert(0, "1") # Default value
+# --- Password / Key ---
+password_label = ttk.Label(controls_frame, text="Password(prime number):")
+password_label.pack(pady=(10, 2), padx=10, anchor="w")
+password_entry = ttk.Entry(controls_frame)
+password_entry.pack(pady=2, padx=10, fill="x")
 
-# --- 3. Password / Key ---
-password_label = ttk.Label(params_frame, text="Password:")
-password_label.grid(row=0, column=2, sticky="w")
+# --- Stop Sequence ---
+stop_label = ttk.Label(controls_frame, text="Stop sequence:")
+stop_label.pack(pady=(10, 2), padx=10, anchor="w")
+stop_entry = ttk.Entry(controls_frame)
+stop_entry.insert(0, "#%$")
+stop_entry.pack(pady=2, padx=10, fill="x")
 
-password_entry = ttk.Entry(params_frame, width=15, show="*")
-password_entry.grid(row=1, column=2)
-# We can leave this empty or add a placeholder
+# 1.3. Encryption
+encryption_label = ttk.Label(controls_frame, text="Encryption:")
+encryption_label.pack(pady=(20, 2), padx=10, anchor="w")
+encryption_combo = ttk.Combobox(controls_frame, values=["Binary XOR", "None"], state="readonly")
+encryption_combo.set("None")
+encryption_combo.pack(pady=2, padx=10, fill="x")
 
-# --- 4. Stop Sequence ---
-stop_label = ttk.Label(params_frame, text="Stop Sequence:")
-stop_label.grid(row=0, column=3, sticky="w")
+#region Message and logs
+# --- Column 2: Message and logs ---
+center_frame = ttk.Frame(right_panel, style="TFrame")
+center_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5, rowspan=2)
 
-stop_entry = ttk.Entry(params_frame, width=15)
-stop_entry.grid(row=1, column=3)
-stop_entry.insert(0, "&#@") # Default value
+center_frame.rowconfigure(0, weight=0) 
+center_frame.rowconfigure(1, weight=1)
+center_frame.rowconfigure(2, weight=0)
+center_frame.rowconfigure(3, weight=1)
+center_frame.columnconfigure(0, weight=1)
 
-start_btn = ttk.Button(right_panel, text="Start", state="disabled")
-start_btn.pack(side="bottom", anchor="se", padx=20, pady=20)
+# 2.1. Message field
+message_label = ttk.Label(center_frame, text="Message:")
+message_label.grid(row=0, column=0, sticky="nw", padx=10, pady=(5, 0))
+message_area = scrolledtext.ScrolledText(center_frame, height=10, wrap=tk.WORD)
+message_area.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+
+# 2.2. Log field
+logs_label = ttk.Label(center_frame, text="Logs:")
+logs_label.grid(row=2, column=0, sticky="nw", padx=10, pady=(5, 0))
+logs_area = scrolledtext.ScrolledText(center_frame, height=10, state="disabled", wrap=tk.WORD)
+logs_area.grid(row=3, column=0, sticky="nsew", padx=10, pady=5)
+
+#region Results
+# --- Column 3: Results ---
+output_frame = ttk.Frame(right_panel, style="TFrame")
+output_frame.grid(row=0, column=2, sticky="nsew", padx=5, pady=5, rowspan=2)
+
+# 3.1. Image dropdown
+output_view_label = ttk.Label(output_frame, text="Representation:")
+output_view_label.pack(pady=(10, 2), padx=10, anchor="w")
+output_view_combo = ttk.Combobox(output_frame, values=["Result"], state="readonly")
+output_view_combo.set("Result")
+output_view_combo.pack(pady=2, padx=10, fill="x")
+
+# 3.2. Result preview
+output_preview_label = ttk.Label(output_frame, text="Output", style="Preview.TLabel", anchor="center")
+output_preview_label.pack(pady=10, padx=10, expand=True, fill="both")
+
+#region Progress and start
+# --- Lower panel: Progress and start ---
+bottom_frame = ttk.Frame(right_panel, style="TFrame")
+bottom_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
+bottom_frame.columnconfigure(0, weight=1)
+
+# 4.1.Progress bar
+progress_bar = ttk.Progressbar(bottom_frame, orient="horizontal", length=100, mode="determinate")
+progress_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+
+# 4.2. Buttons
+folder_btn = ttk.Button(bottom_frame, text="Choose folder", command=choose_output_folder)
+folder_btn.grid(row=0, column=1, padx=10, pady=10)
+
+start_btn = ttk.Button(bottom_frame, text="Start", state="normal", command=start_processing)
+start_btn.grid(row=0, column=2, padx=10, pady=10)
 
 # App start
+root.after(100, process_queue)
 set_mode('hide')
 root.mainloop()
