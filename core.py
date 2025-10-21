@@ -80,7 +80,7 @@ class ImageMedia(SteganographyMedia):
 
 
         #   Hide message
-        success = self._message_hide(encrypted_bits, hide_method, p, depth, output)
+        success = self._message_hide(encrypted_bits, hide_method, p, depth, output, log_queue)
         
         if success:
             log("Hiden message in container successfuly")
@@ -164,16 +164,41 @@ class ImageMedia(SteganographyMedia):
         return bytearray(np.packbits(new_img))
 
     
-    def _message_hide(self, bits_to_hide: list, hide_method, p: int, depth: int, output:str):
+    def _message_hide(self, bits_to_hide: list, hide_method, p: int, depth: int, output:str, log_queue=None):
+        def log(msg):
+            if log_queue: log_queue.put(('log', msg))
+
         if hide_method == 'LSB':
             container = self._LSB_container(depth)
             container = self._hide_bits_in_data(bits_to_hide, p, container)
             new_img = self._LSB_return(depth, container)
             self.save(new_img, output)
+
+            if new_img:
+                log("\nQuality metric calculation")
+                try:
+                    original_np = np.frombuffer(self.raw_data, dtype=np.uint8).astype(float)
+                    modified_np = np.frombuffer(new_img, dtype=np.uint8).astype(float)
+
+                    mse = self._calculate_mse(original_np, modified_np)
+                    log(f"MSE (Mean Squared Error): {mse:.4f}")
+
+                    snr = self._calculate_snr(original_np, modified_np)
+                    log(f"SNR (Signal to noise ratio): {snr:.4f} dB")
+                    
+                    psnr = self._calculate_psnr(original_np, modified_np)
+                    log(f"PSNR (Peak signal to noise ratio): {psnr:.4f} dB")
+
+                except Exception as e:
+                    log(f"Calculation error: {e}")
+
+            
             if new_img:
                 return True
             else:
                 return False
+            
+            
         else:
             print('Invalid Hiding method, or it is now finished yet')
 
@@ -273,7 +298,26 @@ class ImageMedia(SteganographyMedia):
                 message = decrypted_con[:i]
 
         return message
+    
+    def _calculate_mse(self, original_img_np, modified_img_np) -> float:
+        mse = np.mean((original_img_np - modified_img_np) ** 2)
+        return mse
+    
+    def _calculate_snr(self, original_img_np, modified_img_np) -> float:
+        signal_power = np.sum(original_img_np ** 2)
+        noise_power = np.sum((original_img_np - modified_img_np) ** 2)
+        if noise_power == 0:
+            return float('inf')
+        snr = 10 * np.log10(signal_power / noise_power)
+        return snr
 
+    def _calculate_psnr(self, original_img_np, modified_img_np) -> float:
+        mse = self._calculate_mse(original_img_np, modified_img_np)
+        if mse == 0:
+            return float('inf')
+        max_pixel_value = 255.0
+        psnr = 10 * np.log10((max_pixel_value ** 2) / mse)
+        return psnr
         
 # img = ImageMedia('TestData/testimage1.png')
 # img.hide('Felines, also known as cats, are probably the best things on earth', 5, '66666', 'Binary XOR', 'LSB', 4, 1, 'output.png')
